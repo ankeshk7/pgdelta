@@ -1,0 +1,72 @@
+name: pgDelta — PR Database Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [closed]
+
+env:
+  PGDELTA_BRANCH: pr-${{ github.event.pull_request.number }}
+
+jobs:
+  # Create isolated DB branch for this PR
+  setup-db-branch:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      db-url: ${{ steps.db-url.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pgDelta
+        run: |
+          curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_Linux_x86_64.tar.gz | tar xz
+          sudo mv pgdelta /usr/local/bin/
+
+      - name: Create DB branch for PR
+        run: pgdelta create $PGDELTA_BRANCH
+        env:
+          MAIN_DATABASE_URL: ${{ secrets.MAIN_DATABASE_URL }}
+          BRANCH_DATABASE_URL: ${{ secrets.BRANCH_DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Snapshot configured tables
+        run: pgdelta snapshot --all --branch $PGDELTA_BRANCH
+        env:
+          MAIN_DATABASE_URL: ${{ secrets.MAIN_DATABASE_URL }}
+          BRANCH_DATABASE_URL: ${{ secrets.BRANCH_DATABASE_URL }}
+
+      - name: Get branch connection string
+        id: db-url
+        run: |
+          URL=$(pgdelta url $PGDELTA_BRANCH)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+        env:
+          MAIN_DATABASE_URL: ${{ secrets.MAIN_DATABASE_URL }}
+          BRANCH_DATABASE_URL: ${{ secrets.BRANCH_DATABASE_URL }}
+
+      - name: Run tests against branch DB
+        run: go test ./...
+        env:
+          DATABASE_URL: ${{ steps.db-url.outputs.url }}
+
+  # Clean up DB branch when PR is closed
+  cleanup-db-branch:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pgDelta
+        run: |
+          curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_Linux_x86_64.tar.gz | tar xz
+          sudo mv pgdelta /usr/local/bin/
+
+      - name: Delete DB branch
+        run: pgdelta delete $PGDELTA_BRANCH --force
+        env:
+          MAIN_DATABASE_URL: ${{ secrets.MAIN_DATABASE_URL }}
+          BRANCH_DATABASE_URL: ${{ secrets.BRANCH_DATABASE_URL }}
