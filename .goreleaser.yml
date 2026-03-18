@@ -1,0 +1,67 @@
+version: 2
+
+project_name: pgdelta
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: pgdelta
+    repository:
+      owner: ankeshk7
+      name: homebrew-pgdelta
+    homepage: https://github.com/ankeshk7/pgdelta
+    description: "Git-native AI-powered PostgreSQL branching tool"
+    license: MIT
+    test: |
+      system "#{bin}/pgdelta", "--help"
+    install: |
+      bin.install "pgdelta"
+
+nfpms:
+  - package_name: pgdelta
+    homepage: https://github.com/ankeshk7/pgdelta
+    description: "Git-native AI-powered PostgreSQL branching tool"
+    license: MIT
+    formats:
+      - deb
+      - rpm
