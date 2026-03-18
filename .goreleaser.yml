@@ -44,21 +44,17 @@ changelog:
       - "^test:"
       - "^chore:"
 
-brews:
+homebrew_casks:
   - name: pgdelta
     repository:
       owner: ankeshk7
       name: homebrew-pgdelta
     homepage: https://github.com/ankeshk7/pgdelta
     description: "Git-native AI-powered PostgreSQL branching tool"
-    license: MIT
-    test: |
-      system "#{bin}/pgdelta", "--help"
-    install: |
-      bin.install "pgdelta"
 
 nfpms:
   - package_name: pgdelta
+    maintainer: Ankesh Kedia <ankeshk7@gmail.com>
     homepage: https://github.com/ankeshk7/pgdelta
     description: "Git-native AI-powered PostgreSQL branching tool"
     license: MIT
