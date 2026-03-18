@@ -616,7 +616,7 @@ MIT — see [LICENSE](LICENSE)
 
 Built by **Ankesh Kedia** — Senior Software Engineer
 
-pgDelta was built to solve a real problem felt daily inside one of the world's largest financial institutions. If it works at JPMC scale, it works anywhere.
+pgDelta was built to solve a real problem felt daily inside large engineering organizations. If it works at enterprise scale, it works anywhere.
 
 ---
 
