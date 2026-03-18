@@ -249,7 +249,7 @@ func runRebase(cmd *cobra.Command, args []string) error {
 		fmt.Println("  ─────────────────────────────────────────")
 		fmt.Printf("  Rebase complete.\n")
 		fmt.Printf("  %d migration(s) replayed on '%s'.\n", replayedCount, parentBranch)
-		fmt.Println("  Data snapshots preserved.\n")
+		fmt.Println("  Data snapshots preserved.")
 	}
 
 	return nil
