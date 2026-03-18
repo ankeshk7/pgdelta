@@ -1,40 +1,43 @@
 version: 1
 
-# Main database — read only, source of truth
 main:
   url: postgres://localhost:5432/maindb
   access: readonly
 
-# Branch database — pgDelta owns this completely
 branch_db:
   url: postgres://postgres:pgdelta@localhost:5433/branchdb
   access: readwrite
 
-# Branching behavior
 branching:
   schema_from: git-parent
   auto_create: true
   auto_cleanup: true
   auto_merge: true
 
-# Data snapshot configuration
 snapshots:
   default_row_limit: 10000
   chunk_size: 10000
   parallel_tables: 3
   resume_on_interrupt: true
-  tables: {}
+  tables:
+    users:
+      query: "SELECT * FROM users"
+      limit: 5000
+    orders:
+      query: "SELECT * FROM orders"
+      limit: 5000
+    products:
+      query: "SELECT * FROM products"
+      limit: 5000
   exclude:
     - audit_logs
     - sessions
     - password_reset_tokens
 
-# PII masking
 pii:
   auto_detect: true
   masks: {}
 
-# AI configuration
 ai:
   enabled: true
   provider: anthropic
@@ -45,12 +48,10 @@ ai:
     conflict_resolution: true
     pii_detection: true
 
-# Git integration
 git:
   hooks: true
   status_line: true
 
-# Anonymous telemetry — helps AI get smarter
 telemetry:
   enabled: true
   anonymous: true

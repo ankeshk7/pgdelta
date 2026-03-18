@@ -65,7 +65,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		if auto {
 			return nil
 		}
-		return fmt.Errorf("branch '%s' already exists — use 'pgdelta switch %s'", branchName, branchName)
+		return fmt.Errorf("branch '%s' already exists — use 'pgdelta switch %s'",
+			branchName, branchName)
 	}
 
 	// Determine parent branch
@@ -132,6 +133,13 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		fmt.Println("✓")
 	}
 
+	// Get branch ID for auto-snapshot
+	var branchID string
+	_ = dbManager.Branch.QueryRow(ctx,
+		"SELECT id FROM pgdelta.branches WHERE name = $1",
+		branchName,
+	).Scan(&branchID)
+
 	// Step 4 — Sync sequences to prevent PK conflicts after snapshotting
 	_, _ = dbManager.Branch.Exec(ctx, fmt.Sprintf(`
 		DO $$
@@ -151,18 +159,31 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		END $$;
 	`, schemaName, schemaName, schemaName))
 
+	// Step 5 — Auto-snapshot pre-configured tables
+	if !auto && len(cfg.Snapshots.Tables) > 0 && branchID != "" {
+		fmt.Println()
+		fmt.Println("  Auto-snapshotting configured tables...")
+		snapCtx, snapCancel := context.WithTimeout(
+			context.Background(), 30*time.Minute,
+		)
+		defer snapCancel()
+		_ = runSnapshotAll(snapCtx, cmd, cfg, dbManager, branchID, schemaName, branchName)
+	}
+
 	// Success
 	if !auto {
 		fmt.Println()
 		fmt.Println("  ─────────────────────────────────────────")
 		fmt.Printf("  Branch '%s' created.\n", branchName)
 		fmt.Println()
-		fmt.Println("  Tables available (schema only, no data yet):")
-		for _, t := range tables {
-			fmt.Printf("    → %-20s  (%d columns)\n", t.Name, len(t.Columns))
+		if len(cfg.Snapshots.Tables) == 0 {
+			fmt.Println("  Tables available (schema only, no data yet):")
+			for _, t := range tables {
+				fmt.Printf("    → %-20s  (%d columns)\n", t.Name, len(t.Columns))
+			}
+			fmt.Println()
+			fmt.Println("  Data loads lazily when you first query each table.")
 		}
-		fmt.Println()
-		fmt.Println("  Data loads lazily when you first query each table.")
 		fmt.Printf("  Connection:  set DATABASE_URL to point to schema '%s'\n", schemaName)
 		fmt.Println()
 	}
