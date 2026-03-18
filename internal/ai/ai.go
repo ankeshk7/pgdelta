@@ -254,9 +254,13 @@ func (c *Client) SuggestSnapshotConfig(
 	tables map[string][]string,
 	rowCounts map[string]int64,
 ) (map[string]string, error) {
-	system := `You are a database expert helping developers snapshot production data safely.
+	system := `You are a PostgreSQL expert helping developers snapshot production data safely.
 Suggest extraction queries for each table based on the branch name context.
-Always include LIMIT clauses. Never expose sensitive data unnecessarily.
+CRITICAL: Use only valid PostgreSQL syntax. Never use MySQL syntax.
+- Intervals: INTERVAL '30 days' NOT INTERVAL 30 DAY or DATE_SUB
+- Use NOW() - INTERVAL '30 days' for date ranges
+- Always include LIMIT clauses
+- Never use semicolons at the end
 Respond ONLY with a JSON object mapping table names to SQL queries.
 Example: {"users": "SELECT * FROM users WHERE active = true LIMIT 5000"}
 No explanation, no markdown, just the JSON object.`

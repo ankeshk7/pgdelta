@@ -1,57 +1,46 @@
-version: 1
-
-main:
-  url: postgres://localhost:5432/maindb
-  access: readonly
-
-branch_db:
-  url: postgres://postgres:pgdelta@localhost:5433/branchdb
-  access: readwrite
-
-branching:
-  schema_from: git-parent
-  auto_create: true
-  auto_cleanup: true
-  auto_merge: true
-
-snapshots:
-  default_row_limit: 10000
-  chunk_size: 10000
-  parallel_tables: 3
-  resume_on_interrupt: true
-  tables:
-    users:
-      query: "SELECT * FROM users"
-      limit: 5000
-    orders:
-      query: "SELECT * FROM orders"
-      limit: 5000
-    products:
-      query: "SELECT * FROM products"
-      limit: 5000
-  exclude:
-    - audit_logs
-    - sessions
-    - password_reset_tokens
-
-pii:
-  auto_detect: true
-  masks: {}
-
 ai:
-  enabled: true
-  provider: anthropic
-  api_key: ${ANTHROPIC_API_KEY}
-  features:
-    extraction_suggestions: true
-    migration_risk: true
-    conflict_resolution: true
-    pii_detection: true
-
+    api_key: ${ANTHROPIC_API_KEY}
+    enabled: true
+    features:
+        conflict_resolution: true
+        extraction_suggestions: true
+        migration_risk: true
+        pii_detection: true
+    provider: anthropic
+branch_db:
+    access: readwrite
+    url: postgres://postgres:pgdelta@localhost:5433/branchdb
+branching:
+    auto_cleanup: true
+    auto_create: true
+    auto_merge: true
+    schema_from: git-parent
 git:
-  hooks: true
-  status_line: true
-
+    hooks: true
+    status_line: true
+main:
+    access: readonly
+    url: postgres://localhost:5432/maindb
+pii:
+    auto_detect: true
+    masks: {}
+snapshots:
+    chunk_size: 10000
+    default_row_limit: 5000
+    exclude: []
+    parallel_tables: 3
+    resume_on_interrupt: true
+    tables:
+        orders:
+            limit: 0
+            query: SELECT id, user_id, amount, status, created_at FROM orders WHERE created_at >= NOW() - INTERVAL '30 days' LIMIT 10000
+        products:
+            limit: 0
+            query: SELECT id, name, price, stock, created_at FROM products LIMIT 5000
+        users:
+            limit: 0
+            query: SELECT id, email, name, plan, created_at, status FROM users WHERE status = 'active' LIMIT 5000
 telemetry:
-  enabled: true
-  anonymous: true
+    anonymous: true
+    enabled: true
+version: 1
