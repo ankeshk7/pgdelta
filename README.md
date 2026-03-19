@@ -20,19 +20,19 @@ Charlie tests against    →  fake data that misses real bugs
 Dave runs ALTER TABLE    →  everyone's app crashes
 ```
 
-The shared development database is the single biggest source of friction in backend development. pgDelta fixes this permanently — every developer gets their own isolated database branch with real production-shaped data, automatically.
+The shared development database is the single biggest source of friction in backend development. pgDelta fixes this permanently.
 
 ---
 
 ## How It Works
 
-pgDelta uses a **secondary database** for branches. Your main database is never touched — only read from.
+pgDelta gives every developer their own isolated database branch that mirrors their git branch automatically. Real production-shaped data. PII masked automatically. Zero risk to production.
 ```
 ┌──────────────────────────────────────────────────────┐
 │  MAIN DB (read only — never written to by pgDelta)   │
 │  Your real tables, your real data, untouched         │
 └─────────────────────┬────────────────────────────────┘
-                      │ SELECT only
+                      │ SELECT only (read replica safe)
                       ▼
 ┌──────────────────────────────────────────────────────┐
 │  BRANCH DB (pgDelta owns this completely)            │
@@ -50,28 +50,28 @@ pgDelta uses a **secondary database** for branches. Your main database is never 
 
 ### macOS — Apple Silicon (M1/M2/M3/M4)
 ```bash
-curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_macOS_arm64.tar.gz | tar xz
+curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_macOS_arm64.tar.gz | tar xz
 sudo mv pgdelta /usr/local/bin/
 pgdelta --help
 ```
 
 ### macOS — Intel
 ```bash
-curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_macOS_x86_64.tar.gz | tar xz
+curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_macOS_x86_64.tar.gz | tar xz
 sudo mv pgdelta /usr/local/bin/
 pgdelta --help
 ```
 
 ### Linux — amd64
 ```bash
-curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_Linux_x86_64.tar.gz | tar xz
+curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_Linux_x86_64.tar.gz | tar xz
 sudo mv pgdelta /usr/local/bin/
 pgdelta --help
 ```
 
 ### Linux — arm64
 ```bash
-curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_Linux_arm64.tar.gz | tar xz
+curl -sSL https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_Linux_arm64.tar.gz | tar xz
 sudo mv pgdelta /usr/local/bin/
 pgdelta --help
 ```
@@ -79,12 +79,12 @@ pgdelta --help
 ### Linux packages
 ```bash
 # Debian / Ubuntu
-wget https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_linux_amd64.deb
-sudo dpkg -i pgdelta_1.0.0_linux_amd64.deb
+wget https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_linux_amd64.deb
+sudo dpkg -i pgdelta_1.0.2_linux_amd64.deb
 
 # RHEL / Fedora / CentOS
-wget https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.0_linux_amd64.rpm
-sudo rpm -i pgdelta_1.0.0_linux_amd64.rpm
+wget https://github.com/ankeshk7/pgdelta/releases/latest/download/pgdelta_1.0.2_linux_amd64.rpm
+sudo rpm -i pgdelta_1.0.2_linux_amd64.rpm
 ```
 
 ### Build from source
@@ -142,10 +142,7 @@ Keep it completely separate from your production RDS
 ---
 
 ### Step 2 — Create a Read-Only User On Main DB
-
-For maximum safety, create a dedicated read-only Postgres user:
 ```sql
--- Run this on your main database
 CREATE USER pgdelta_readonly WITH PASSWORD 'your_secure_password';
 GRANT CONNECT ON DATABASE mydb TO pgdelta_readonly;
 GRANT USAGE ON SCHEMA public TO pgdelta_readonly;
@@ -159,8 +156,6 @@ pgDelta physically cannot write to your main DB with this user.
 ---
 
 ### Step 3 — Set Environment Variables
-
-Never put credentials directly in `.pgdelta.yml`. Use environment variables:
 ```bash
 # Add to ~/.zprofile or ~/.bashrc
 export MAIN_DATABASE_URL="postgres://pgdelta_readonly:pass@your-db:5432/mydb"
@@ -177,10 +172,6 @@ MAIN_DATABASE_URL=postgres://pgdelta_readonly:pass@your-db:5432/mydb
 BRANCH_DATABASE_URL=postgres://postgres:pass@localhost:5433/branchdb
 ANTHROPIC_API_KEY=sk-ant-...
 ```
-```bash
-echo '.env' >> .gitignore
-source .env
-```
 
 ---
 
@@ -195,19 +186,20 @@ pgdelta init \
   --branch-url "$BRANCH_DATABASE_URL"
 ```
 ```
-  Connecting to main DB...    ✓  (PostgreSQL 16.x)
-  Connecting to branch DB...  ✓  (PostgreSQL 16.x)
-  Creating pgdelta schema...  ✓
-  Creating branch_main...     ✓
-  Writing .pgdelta.yml...     ✓
-  Installing git hooks...     ✓
-
-  pgDelta initialized successfully.
+  Connecting to main DB...      ✓  (PostgreSQL 16.x)
+  Connecting to branch DB...    ✓  (PostgreSQL 16.x)
+  Creating pgdelta schema...    ✓
+  Creating branch_main...       ✓
+  Scanning for PII columns...   ✓  (2 sensitive columns detected)
+    → users.email
+    → users.phone
+  Writing .pgdelta.yml...       ✓
+  Installing git hooks...       ✓
 ```
 
 ### 2. Auto-Configure Snapshot Queries
 
-pgDelta scans your schema and AI generates the right extraction query for each table:
+pgDelta scans your schema and AI generates the right extraction query for each table. Tables are detected automatically — no hardcoding needed.
 ```bash
 pgdelta configure
 ```
@@ -216,7 +208,7 @@ pgdelta configure
 
   Asking AI to suggest extraction queries...  ✓
 
-  users      SELECT * FROM users WHERE plan != 'free' LIMIT 5000
+  users      SELECT * FROM users WHERE status = 'active' LIMIT 5000
   orders     SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '30 days' LIMIT 10000
   products   SELECT * FROM products LIMIT 5000
   payments   SELECT * FROM payments WHERE status = 'completed' LIMIT 5000
@@ -226,9 +218,33 @@ pgdelta configure
   ✓  .pgdelta.yml updated.
 ```
 
-Tables are detected automatically from your real database — no hardcoding needed. Run `pgdelta configure` again whenever you add new tables.
+Run again anytime to regenerate. Add a single new table without touching others:
+```bash
+pgdelta configure --table=new_payments_table
+```
 
-### 3. Check Everything Is Working
+### 3. Configure PII Masking
+
+pgDelta automatically detects sensitive columns on init. Add masking rules to `.pgdelta.yml`:
+```yaml
+pii:
+  auto_detect: true
+  masks:
+    users:
+      email: "masked_{{id}}@example.com"   # unique per row
+      phone: "+10000000000"
+      name: "REDACTED"
+      ssn: "***-**-{{last4}}"              # keeps last 4 digits
+```
+
+Supported patterns:
+- `{{id}}` — replaced with the row's id (ensures uniqueness)
+- `{{last4}}` — replaced with last 4 characters of the original value
+- Any static string — e.g. `"REDACTED"`, `"+10000000000"`
+
+Masks are enforced automatically on every snapshot. Real data never leaves your main DB.
+
+### 4. Verify Setup
 ```bash
 pgdelta doctor
 ```
@@ -248,58 +264,86 @@ pgdelta doctor
   ✓  pgDelta is fully configured and ready.
 ```
 
-### 4. Commit Config and Work Normally
+### 5. Commit Config and Work Normally
 ```bash
 git add .pgdelta.yml
 git commit -m "chore: add pgDelta config"
 
 # Now just use git — pgDelta handles everything else
 git checkout -b feature-payments
-
 # → branch created automatically
-# → your real tables loaded in parallel
-# → you're working with real production-shaped data
+# → tables loaded with real data, PII masked
 # → completely isolated from teammates
+```
+
+---
+
+## The Complete Developer Workflow
+```bash
+# Day 1 setup (5 minutes)
+pgdelta init
+pgdelta configure
+pgdelta protect add main
+git add .pgdelta.yml && git commit -m "chore: add pgDelta"
+
+# Daily workflow (zero extra effort)
+git checkout -b feature-stripe
+
+# → branch created automatically from parent schema
+# → users, orders, products loaded in parallel
+# → emails masked, names REDACTED, real data shape preserved
+# → nobody else affected
+
+pgdelta migrate "ALTER TABLE users ADD COLUMN stripe_id TEXT"
+# AI: ✓ safe — nullable column, no data impact
+
+pgdelta migrate "CREATE INDEX idx_stripe ON users(stripe_id)"
+# AI: ✓ safe
+
+# Test against real production-shaped data
+# Ship with confidence
+
+git merge feature-stripe
+# → ALTER TABLE applied to parent
+# → CREATE INDEX applied to parent
+# → Test data discarded
+# → Branch schema dropped, storage freed
 ```
 
 ---
 
 ## Key Design Decisions
 
-### Tables Detected Automatically — No Hardcoding
+### Tables Detected Automatically
 
-pgDelta reads your actual schema from the main DB. `pgdelta configure` detects every table and AI generates appropriate extraction queries. You never hardcode table names.
-```bash
-# Run once after init
-pgdelta configure
+pgDelta reads your actual schema. `pgdelta configure` detects every table and AI generates appropriate queries. Run again when you add new tables.
 
-# Run again when you add new tables
-pgdelta configure
+### PII Masked On Extraction
+
+Sensitive data is masked before it ever enters the branch DB using SQL expression rewriting:
+```
+Original query:  SELECT * FROM users WHERE status = 'active'
+Executed query:  SELECT id,
+                   'masked_' || id::text || '@example.com' AS email,
+                   'REDACTED' AS name,
+                   status, plan, created_at
+                 FROM users WHERE status = 'active'
 ```
 
-### Lazy Snapshots — Data Only When You Need It
-
-Tables load on first query, not at branch creation. With pre-configured queries, loading is automatic and parallel.
-```
-git checkout -b feature-payments
-→ users    5,000 rows loaded  (AI-suggested query)
-→ orders   8,423 rows loaded
-→ products   847 rows loaded
-→ Ready in 18 seconds. Real data. No setup.
-```
+Real emails never stored. Real names never stored. Branch has realistic data shape with safe values.
 
 ### Migrations Only On Merge
 
-Only schema changes (DDL) travel to the parent on merge. Test data is discarded. Main's real data is never touched.
+Only schema changes (DDL) travel to the parent on merge. Test data is discarded. Main DB untouched.
 ```sql
--- Travels to parent on merge:
+-- Travels to parent:
 ALTER TABLE users ADD COLUMN stripe_id TEXT;
 CREATE INDEX idx_stripe ON users(stripe_id);
 
--- Discarded on merge (test data):
+-- Discarded on merge:
 INSERT INTO users VALUES ('test@test.com', ...);
 
--- Explicitly mark as seed data to travel with DDL:
+-- Mark as seed to travel with DDL:
 -- pgdelta:seed
 INSERT INTO subscription_plans VALUES (1, 'pro', 49);
 ```
@@ -310,36 +354,6 @@ git checkout -b feature-x   →  DB branch created automatically
 git merge feature-x         →  DDL applied to parent automatically
 git branch -d feature-x     →  DB schema dropped, storage freed
 git rebase develop          →  migrations replayed on new base
-```
-
----
-
-## The Complete Developer Workflow
-```bash
-# Day 1 setup (5 minutes)
-pgdelta init
-pgdelta configure
-git add .pgdelta.yml && git commit -m "chore: add pgDelta"
-
-# Daily workflow (zero extra effort)
-git checkout -b feature-stripe
-
-# → branch created, 3 tables loaded in parallel, ready in seconds
-
-pgdelta migrate "ALTER TABLE users ADD COLUMN stripe_id TEXT"
-# AI: ✓ safe — nullable column, no impact
-
-pgdelta migrate "CREATE INDEX idx_stripe ON users(stripe_id)"
-# AI: ✓ safe
-
-# Test your feature against real data
-# Nobody else is affected — completely isolated
-
-git merge feature-stripe
-# → ALTER TABLE applied to parent
-# → CREATE INDEX applied to parent
-# → Test data discarded
-# → Branch cleaned up
 ```
 
 ---
@@ -362,38 +376,43 @@ branch_db:
 
 # Branching — mirrors git topology automatically
 branching:
-  schema_from: git-parent    # DB branch inherits from git parent
-  auto_create: true          # create on git checkout -b
-  auto_cleanup: true         # delete on git branch -d
-  auto_merge: true           # apply DDL on git merge
+  schema_from: git-parent
+  auto_create: true
+  auto_cleanup: true
+  auto_merge: true
 
 # Snapshot queries — auto-generated by pgdelta configure
-# Customize per table as needed
+# Run 'pgdelta configure' to regenerate
+# Add a single table: pgdelta configure --table=<name>
 snapshots:
-  default_row_limit: 10000
+  default_row_limit: 5000
   chunk_size: 10000
   parallel_tables: 3
-  resume_on_interrupt: true  # Ctrl+C safe — resumes where it stopped
+  resume_on_interrupt: true
   tables:
     users:
-      query: "SELECT * FROM users WHERE plan != 'free'"
-      limit: 5000
+      query: "SELECT * FROM users WHERE status = 'active'"
     orders:
       query: "SELECT * FROM orders WHERE created_at > now() - interval '30 days'"
-      limit: 10000
+    products:
+      query: "SELECT * FROM products"
   exclude:
     - audit_logs
     - sessions
     - password_reset_tokens
 
-# PII masking — sensitive data never leaves production
+# PII masking — enforced automatically on every snapshot
+# Patterns: {{id}} = row id, {{last4}} = last 4 chars, or static string
 pii:
   auto_detect: true
   masks:
-    users.email: "masked_{{id}}@example.com"
-    users.phone: "+10000000000"
+    users:
+      email: "masked_{{id}}@example.com"
+      phone: "+10000000000"
+      name: "REDACTED"
+      ssn: "***-**-{{last4}}"
 
-# AI features — bring your own Anthropic API key
+# AI — bring your own Anthropic API key
 ai:
   enabled: true
   provider: anthropic
@@ -409,12 +428,7 @@ git:
   hooks: true
   status_line: true
 
-# Protected branches — prevent accidental merges
-protect:
-  - main
-  - production
-
-# Anonymous telemetry — helps AI get smarter
+# Anonymous telemetry — helps improve pgDelta
 telemetry:
   enabled: true
   anonymous: true
@@ -424,89 +438,97 @@ telemetry:
 
 ## All Commands
 ```bash
-# ── SETUP ──────────────────────────────────────────────
-pgdelta init                          # initialize pgDelta in repo
-pgdelta configure                     # AI auto-generate snapshot config
-pgdelta doctor [--fix]                # 10 health checks + auto-fix
-pgdelta team init                     # generate team-ready config
-pgdelta team status                   # team branch activity overview
+# ── SETUP ──────────────────────────────────────────────────────
+pgdelta init                           # initialize pgDelta in repo
+pgdelta configure                      # AI auto-generate snapshot config
+pgdelta configure --table=<name>       # add/update single table config
+pgdelta configure --no-ai              # use simple SELECT * queries
+pgdelta doctor [--fix]                 # 10 health checks + auto-fix
+pgdelta team init                      # generate team-ready config
+pgdelta team status                    # team branch activity overview
 
-# ── BRANCHING ──────────────────────────────────────────
-pgdelta create <branch>               # create DB branch
-pgdelta clone <source> <new>          # clone branch with data + migrations
-pgdelta switch <branch>               # switch DB context
-pgdelta delete <branch>               # drop branch + free storage
-pgdelta delete <branch> --force       # skip unmerged migration warning
-pgdelta list                          # list active branches
-pgdelta list --all                    # include merged + deleted
-pgdelta status                        # current branch + divergence warning
-pgdelta diff <b1> [b2]                # schema diff between branches
-pgdelta diff <b1> [b2] --migrations   # migration diff instead of schema
+# ── BRANCHING ──────────────────────────────────────────────────
+pgdelta create <branch>                # create DB branch
+pgdelta clone <source> <new>           # clone branch with data + migrations
+pgdelta switch <branch>                # switch DB context
+pgdelta delete <branch>                # drop branch + free storage
+pgdelta delete <branch> --force        # skip unmerged migration warning
+pgdelta list                           # list active branches
+pgdelta list --all                     # include merged + deleted
+pgdelta status                         # current branch + divergence warning
+pgdelta diff <b1> [b2]                 # schema diff between branches
+pgdelta diff <b1> [b2] --migrations    # migration diff instead of schema
 
-# ── DATA ───────────────────────────────────────────────
-pgdelta snapshot <table>              # snapshot single table (AI suggests)
-pgdelta snapshot <table> --no-ai      # skip AI suggestion
-pgdelta snapshot --all                # snapshot all configured tables
-pgdelta url [branch]                  # connection string for branch
-pgdelta url [branch] --format=env     # as DATABASE_URL=...
-pgdelta url [branch] --format=json    # as JSON
+# ── DATA ───────────────────────────────────────────────────────
+pgdelta snapshot <table>               # snapshot table (AI suggests query)
+pgdelta snapshot <table> --no-ai       # skip AI suggestion
+pgdelta snapshot --all                 # snapshot all configured tables
+pgdelta url [branch]                   # connection string for branch
+pgdelta url [branch] --format=env      # as DATABASE_URL=...
+pgdelta url [branch] --format=json     # as JSON
 
-# ── MIGRATIONS ─────────────────────────────────────────
-pgdelta migrate "<sql>"               # apply migration + AI risk check
-pgdelta migrate "<sql>" --no-ai       # skip risk analysis
-pgdelta migrate "<sql>" --type=seed   # mark as seed data
-pgdelta log [branch]                  # migration history (git log style)
-pgdelta log [branch] --type=ddl       # filter by type
-pgdelta reset [branch]                # undo last migration
-pgdelta reset [branch] --steps=3      # undo last 3 migrations
-pgdelta reset [branch] --force        # skip confirmation
-pgdelta merge <branch>                # merge DDL to parent
-pgdelta merge <branch> --dry-run      # simulate only
-pgdelta merge <branch> --strategy=theirs  # auto-resolve conflicts
-pgdelta rebase <branch>               # replay on parent's latest
-pgdelta rebase <branch> --onto main   # rebase onto specific branch
+# ── MIGRATIONS ─────────────────────────────────────────────────
+pgdelta migrate "<sql>"                # apply migration + AI risk check
+pgdelta migrate "<sql>" --no-ai        # skip risk analysis
+pgdelta migrate "<sql>" --type=seed    # mark as seed data
+pgdelta log [branch]                   # migration history (git log style)
+pgdelta log [branch] --type=ddl        # filter by type
+pgdelta reset [branch]                 # undo last migration
+pgdelta reset [branch] --steps=3       # undo last 3 migrations
+pgdelta reset [branch] --force         # skip confirmation
+pgdelta merge <branch>                 # merge DDL to parent
+pgdelta merge <branch> --dry-run       # simulate only
+pgdelta merge <branch> --strategy=theirs   # auto-resolve conflicts
+pgdelta rebase <branch>                # replay on parent's latest
+pgdelta rebase <branch> --onto main    # rebase onto specific branch
 
-# ── STASH & TAG ────────────────────────────────────────
-pgdelta stash save [message]          # stash current migration state
-pgdelta stash pop                     # restore last stash
-pgdelta stash list                    # list all stashes
-pgdelta stash drop [id]               # drop a stash
-pgdelta tag create <name> [message]   # create named checkpoint
-pgdelta tag list                      # list all tags
-pgdelta tag delete <name>             # delete a tag
+# ── STASH & TAG ────────────────────────────────────────────────
+pgdelta stash save [message]           # stash current migration state
+pgdelta stash pop                      # restore last stash
+pgdelta stash list                     # list all stashes
+pgdelta stash drop [id]                # drop a stash
+pgdelta tag create <name> [message]    # create named checkpoint
+pgdelta tag list                       # list all tags
+pgdelta tag delete <name>              # delete a tag
 
-# ── PROTECT ────────────────────────────────────────────
-pgdelta protect add <branch>          # protect branch from direct merge
-pgdelta protect remove <branch>       # remove protection
-pgdelta protect list                  # list protected branches
+# ── PROTECT ────────────────────────────────────────────────────
+pgdelta protect add <branch>           # protect from direct merge
+pgdelta protect remove <branch>        # remove protection
+pgdelta protect list                   # list protected branches
 
-# ── AUDIT ──────────────────────────────────────────────
-pgdelta audit                         # export all activity (table format)
-pgdelta audit --format=csv            # CSV export
-pgdelta audit --format=json           # JSON export
-pgdelta audit --out=audit.csv         # write to file
-pgdelta audit --branch=main           # filter by branch
+# ── AUDIT ──────────────────────────────────────────────────────
+pgdelta audit                          # export all activity (table format)
+pgdelta audit --format=csv             # CSV export
+pgdelta audit --format=json            # JSON export
+pgdelta audit --out=audit.csv          # write to file
+pgdelta audit --branch=main            # filter by branch
 
-# ── CI/CD ──────────────────────────────────────────────
-pgdelta ci github                     # generate GitHub Actions workflow
+# ── CI/CD ──────────────────────────────────────────────────────
+pgdelta ci github                      # generate GitHub Actions workflow
 pgdelta ci github --test-cmd "make test"
 
-# ── DASHBOARD ──────────────────────────────────────────
-pgdelta dashboard                     # open web dashboard
-pgdelta dashboard --port=8080         # custom port
-pgdelta dashboard --no-open           # don't auto-open browser
+# ── DASHBOARD ──────────────────────────────────────────────────
+pgdelta dashboard                      # open web dashboard
+pgdelta dashboard --port=8080          # custom port
+pgdelta dashboard --no-open            # don't auto-open browser
 ```
 
 ---
 
 ## AI Features
-
-Set your Anthropic API key to unlock AI at every friction point:
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-**Extraction query generation** — AI analyzes your branch name and table schema:
+**Schema configuration** — detects all tables, generates appropriate queries:
+```bash
+pgdelta configure
+# → scans every table in your DB
+# → AI generates right query per table context
+# → saved to .pgdelta.yml for team consistency
+```
+
+**Extraction suggestions** — AI analyzes branch name + schema:
 ```
 Branch: feature-payments
 Table:  users
@@ -515,7 +537,7 @@ AI suggests:
 SELECT * FROM users WHERE has_payment_method = true LIMIT 5000
 ```
 
-**Migration risk detection** — AI warns before dangerous DDL:
+**Migration risk detection** — warns before dangerous DDL:
 ```
 pgdelta migrate "ALTER TABLE users DROP COLUMN email"
 
@@ -526,9 +548,77 @@ pgdelta migrate "ALTER TABLE users DROP COLUMN email"
 Proceed anyway? [y/N]:
 ```
 
-**Auto schema configuration** — `pgdelta configure` scans every table and generates queries automatically. No manual configuration needed.
+**PII auto-detection** — scans schema on init, flags sensitive columns automatically.
 
 **Enterprise:** Bring your own API key — data never sent to third parties.
+
+---
+
+## PII Masking
+
+pgDelta enforces PII masking at extraction time. Sensitive data is rewritten in SQL before it's streamed to the branch DB.
+
+### How It Works
+```
+Config:
+  users.email: "masked_{{id}}@example.com"
+  users.name:  "REDACTED"
+
+Main DB:                    Branch DB:
+alice@example.com    →      masked_1@example.com
+Bob                  →      REDACTED
+charlie@example.com  →      masked_3@example.com
+Charlie              →      REDACTED
+```
+
+### Mask Patterns
+```yaml
+pii:
+  masks:
+    users:
+      email: "masked_{{id}}@example.com"  # unique per row using id
+      name: "REDACTED"                     # static replacement
+      phone: "+10000000000"                # static replacement
+      ssn: "***-**-{{last4}}"             # keeps last 4 digits
+      ip_address: "0.0.0.0"               # static replacement
+```
+
+### Auto-Detection
+
+On `pgdelta init`, pgDelta scans your schema and flags columns that likely contain PII:
+- `email`, `mail` → email pattern
+- `phone`, `mobile`, `tel` → phone pattern
+- `ssn`, `national_id` → SSN pattern
+- `name`, `first_name`, `last_name` → name pattern
+- `address`, `street`, `zip` → address pattern
+- `ip`, `ip_address` → IP pattern
+- `card_number`, `pan` → card pattern
+
+---
+
+## Team Setup
+```bash
+# One-time team setup (5 minutes)
+pgdelta init
+pgdelta configure
+pgdelta protect add main
+pgdelta ci github
+
+git add .pgdelta.yml .github/workflows/pgdelta.yml
+git commit -m "chore: add pgDelta team config"
+git push
+```
+
+Each team member then:
+```bash
+git clone your-repo
+export MAIN_DATABASE_URL="..."
+export BRANCH_DATABASE_URL="..."
+pgdelta init
+# Done — hooks installed, ready to work
+```
+
+Every PR automatically gets its own isolated database branch via GitHub Actions.
 
 ---
 
@@ -538,12 +628,6 @@ pgdelta ci github --test-cmd "go test ./..."
 # writes .github/workflows/pgdelta.yml
 ```
 
-Every PR automatically gets:
-- Its own isolated database branch
-- Real data loaded from your snapshot config
-- Tests run against that branch's `DATABASE_URL`
-- Branch cleaned up when PR is closed
-
 Add to your GitHub repo secrets:
 ```
 MAIN_DATABASE_URL
@@ -551,28 +635,11 @@ BRANCH_DATABASE_URL
 ANTHROPIC_API_KEY   (optional)
 ```
 
----
-
-## Team Setup
-```bash
-# One-time team setup
-pgdelta team init          # generates team-ready .pgdelta.yml
-pgdelta configure          # AI generates snapshot queries
-pgdelta protect add main   # protect main from accidental merges
-pgdelta ci github          # generate CI workflow
-
-git add .pgdelta.yml .github/workflows/pgdelta.yml
-git commit -m "chore: add pgDelta team config"
-```
-
-Each team member then:
-```bash
-git clone your-repo
-export MAIN_DATABASE_URL="..."
-export BRANCH_DATABASE_URL="..."
-pgdelta init
-# Done — git hooks installed, ready to work
-```
+Every PR gets:
+- Isolated database branch with real data
+- PII masked automatically
+- Tests run against branch `DATABASE_URL`
+- Branch cleaned up when PR closes
 
 ---
 
@@ -582,24 +649,19 @@ pgdelta dashboard
 # Opens http://localhost:7433
 ```
 
-Shows all branches, migration history, snapshot status — live, auto-refreshing every 5 seconds.
+GitHub-style interface showing all branches, migrations, snapshots — live, auto-refreshing.
 
 ---
 
 ## Audit Log
 ```bash
-# View in terminal
 pgdelta audit
-
-# Export for compliance
-pgdelta audit --format=csv --out=audit-2026-03.csv
-pgdelta audit --format=json --out=audit.json
-
-# Filter by branch
+pgdelta audit --format=csv --out=audit-march.csv
+pgdelta audit --format=json
 pgdelta audit --branch=main
 ```
 
-Captures: branch creation, migration applied, snapshot completed, branch merged.
+Captures every branch creation, migration, snapshot, and merge. Export for compliance.
 
 ---
 
@@ -607,23 +669,24 @@ Captures: branch creation, migration applied, snapshot completed, branch merged.
 
 | Guarantee | How |
 |---|---|
-| Main DB never written to | Read-only connection enforced in code + DB user |
-| PII masked automatically | AI detects sensitive columns, masks on extraction |
+| Main DB never written to | Read-only connection + dedicated DB user |
+| PII masked automatically | SQL expression rewriting at extraction time |
+| Unique masked values | `{{id}}` pattern ensures no unique constraint violations |
 | Data never leaves your infra | Self-hosted, no cloud dependency |
 | AI key stays with you | Bring your own Anthropic key |
-| Full audit trail | Every extraction, migration, conflict logged |
+| Full audit trail | Every action logged |
 | Protected branches | Prevent accidental merges to production |
-| Resumable snapshots | Ctrl+C safe — picks up where it stopped |
+| Resumable snapshots | Ctrl+C safe — picks up where stopped |
 
 ---
 
 ## Why Not...
 
-**Neon?** Cloud-only. Your data never leaves with pgDelta. No vendor lock-in.
+**Neon?** Cloud-only. Your data never leaves with pgDelta.
 
-**PlanetScale?** MySQL only. Schema-only branching — no data. Cut free tier.
+**PlanetScale?** MySQL only. Schema-only branching — no data.
 
-**Dolt?** Rewrites Postgres storage engine. Slow and unfamiliar workflow.
+**Dolt?** Rewrites Postgres storage engine. Slow and unfamiliar.
 
 **Shared dev DB?** You already know why not.
 
@@ -634,17 +697,16 @@ Captures: branch creation, migration applied, snapshot completed, branch merged.
 Developer (git commands only)
     ↓ git hooks fire automatically
 pgDelta CLI (Go — single binary, no runtime)
-    ├── Branch Engine      create, clone, switch, delete, list
-    ├── Snapshot Engine    lazy load via COPY protocol + keyset pagination
-    ├── Migration Engine   capture, log, reset, merge, rebase
+    ├── Branch Engine      create, clone, switch, delete, diff, log
+    ├── Snapshot Engine    lazy load via COPY + keyset pagination + PII masking
+    ├── Migration Engine   capture, reset, merge, rebase, stash, tag
     ├── Conflict Engine    simulate before apply, never blind merge
-    ├── AI Engine          Claude API — suggestions, risk, PII
-    ├── Git Engine         hooks, parent detection, topology mirror
+    ├── AI Engine          Claude API — configure, suggestions, risk
+    ├── PII Engine         SQL expression rewriting, auto-detection
     ├── Protect Engine     branch protection + git hook enforcement
-    ├── Stash/Tag Engine   checkpoint and restore migration state
     ├── Audit Engine       CSV/JSON activity log export
     ├── Team Engine        shared config generation
-    └── Dashboard          GitHub-style web UI
+    └── Dashboard          GitHub-style web UI, live refresh
     ↓
 Main DB (read only)         Branch DB (pgDelta owned)
 Your prod replica           One Postgres schema per branch
@@ -656,15 +718,10 @@ Your prod replica           One Postgres schema per branch
 
 ## Roadmap
 ```
-v0.1  ✓  Core branching, lazy snapshots, migrations, merge, rebase
-v0.2  ✓  pgdelta doctor — health checks
-v0.3  ✓  snapshot --all — parallel loading
-v0.4  ✓  pgdelta url + GitHub Actions
-v0.5  ✓  pgdelta configure — AI auto-generates config
-v0.6  ✓  Web dashboard — GitHub-style UI
-v0.7  ✓  clone, diff, log, reset — complete git parity
-v1.0  ✓  stash, tag, audit, protect, team — production ready
-v1.1  →  Enterprise SSO + audit exports
+v1.0  ✓  Complete — branching, snapshots, migrations, merge, rebase,
+          AI, dashboard, clone, diff, log, reset, stash, tag,
+          protect, audit, team, PII masking
+v1.1  →  Enterprise SSO + compliance report exports
 v1.2  →  pgdelta cloud — hosted branch DB option
 v2.0  →  Multi-database support (MySQL, SQLite)
 ```
@@ -684,8 +741,6 @@ go build -o pgdelta .
 ./pgdelta --help
 ```
 
-Issues and PRs welcome. Please open an issue before large changes.
-
 ---
 
 ## License
@@ -696,12 +751,10 @@ MIT — see [LICENSE](LICENSE)
 
 Built by **Ankesh Kedia** — Senior Software Engineer.
 
-pgDelta was built to solve a real problem felt daily inside large engineering organizations. If it works at enterprise scale, it works anywhere.
-
 ---
 
 <p align="center">
-  <strong>pgDelta Δ — v1.0.0</strong><br><br>
+  <strong>pgDelta Δ — v1.0.2</strong><br><br>
   <a href="https://github.com/ankeshk7/pgdelta/releases">Releases</a> ·
   <a href="https://github.com/ankeshk7/pgdelta/issues">Issues</a> ·
   <a href="https://github.com/ankeshk7/pgdelta">GitHub</a>
