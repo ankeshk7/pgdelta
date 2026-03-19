@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ankeshkedia/pgdelta/internal/pii"
 )
 
 // Status constants
@@ -48,6 +49,7 @@ type Manager struct {
 	MainPool   *pgxpool.Pool
 	BranchPool *pgxpool.Pool
 	ChunkSize  int
+	PIIMasks   map[string]string
 }
 
 // New creates a new snapshot manager
@@ -59,7 +61,14 @@ func New(mainPool, branchPool *pgxpool.Pool, chunkSize int) *Manager {
 		MainPool:   mainPool,
 		BranchPool: branchPool,
 		ChunkSize:  chunkSize,
+		PIIMasks:   make(map[string]string),
 	}
+}
+
+// WithPIIMasks sets PII masking rules on the manager
+func (m *Manager) WithPIIMasks(masks map[string]string) *Manager {
+	m.PIIMasks = masks
+	return m
 }
 
 // Exists checks if a snapshot exists for a table in a branch
@@ -146,6 +155,12 @@ func (m *Manager) Load(
 
 	var totalLoaded int64
 	start := time.Now()
+
+	// Apply PII masking to extraction query before loading
+	rewriter := pii.New(m.PIIMasks)
+	if maskedSQL, rewriteErr := rewriter.RewriteQuery(ctx, m.MainPool, tableName, extractionSQL); rewriteErr == nil {
+		extractionSQL = maskedSQL
+	}
 
 	if cursorCol != "" {
 		// Chunked load with keyset pagination

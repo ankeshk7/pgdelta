@@ -49,8 +49,28 @@ type TableSnapshot struct {
 }
 
 type PIIConfig struct {
-	AutoDetect bool              `mapstructure:"auto_detect"`
-	Masks      map[string]string `mapstructure:"masks"`
+	AutoDetect bool                       `mapstructure:"auto_detect"`
+	Masks      map[string]interface{}     `mapstructure:"masks"`
+}
+
+// GetMasks returns PII masks as flat map[string]string
+// handles both "table.column: value" and nested yaml formats
+func (p *PIIConfig) GetMasks() map[string]string {
+	result := make(map[string]string)
+	for k, v := range p.Masks {
+		switch val := v.(type) {
+		case string:
+			result[k] = val
+		case map[string]interface{}:
+			// nested format: users: {email: mask}
+			for col, mask := range val {
+				if maskStr, ok := mask.(string); ok {
+					result[k+"."+col] = maskStr
+				}
+			}
+		}
+	}
+	return result
 }
 
 type AIConfig struct {

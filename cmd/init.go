@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ankeshkedia/pgdelta/internal/config"
+	"github.com/ankeshkedia/pgdelta/internal/pii"
 	"github.com/ankeshkedia/pgdelta/internal/db"
 	"github.com/spf13/cobra"
 	"github.com/ankeshkedia/pgdelta/internal/schema"
@@ -94,6 +95,27 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("\n  Failed to create branch_main: %w", err)
 	}
 	fmt.Println("✓")
+
+	// Step 3c — Auto-detect PII columns
+	fmt.Print("  Scanning for PII columns... ")
+	tables, _ := schema.Snapshot(ctx, dbManager.Main)
+	tableColumns := make(map[string][]string)
+	for _, t := range tables {
+		var cols []string
+		for _, c := range t.Columns {
+			cols = append(cols, c.Name)
+		}
+		tableColumns[t.Name] = cols
+	}
+	detectedMasks := pii.DetectPIIColumns(tableColumns)
+	if len(detectedMasks) > 0 {
+		fmt.Printf("✓  (%d sensitive columns detected)\n", len(detectedMasks))
+		for col := range detectedMasks {
+			fmt.Printf("    → %s\n", col)
+		}
+	} else {
+		fmt.Println("✓  (none detected)")
+	}
 
 	// Step 4 — Check for existing config
 	if config.Exists() {

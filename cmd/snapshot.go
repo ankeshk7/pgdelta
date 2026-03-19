@@ -98,7 +98,7 @@ func runSnapshotAll(
 	fmt.Println()
 	fmt.Printf("  Loading %d table(s) in parallel...\n\n", len(cfg.Snapshots.Tables))
 
-	mgr := snapshot.New(dbManager.Main, dbManager.Branch, cfg.Snapshots.ChunkSize)
+	mgr := snapshot.New(dbManager.Main, dbManager.Branch, cfg.Snapshots.ChunkSize).WithPIIMasks(cfg.PII.GetMasks())
 
 	type result struct {
 		table   string
@@ -304,7 +304,7 @@ func runSnapshotOne(
 		fmt.Println()
 	}
 
-	mgr := snapshot.New(dbManager.Main, dbManager.Branch, cfg.Snapshots.ChunkSize)
+	mgr := snapshot.New(dbManager.Main, dbManager.Branch, cfg.Snapshots.ChunkSize).WithPIIMasks(cfg.PII.GetMasks())
 
 	snapshotID, err := mgr.Register(ctx, branchID, tableName, extractionQuery)
 	if err != nil {

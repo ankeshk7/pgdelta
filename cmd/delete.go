@@ -99,20 +99,24 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		fmt.Println("✓")
 	}
 
-	// Step 2 — Mark branch as deleted in metadata
+	// Step 2 — Hard delete branch and all related data
 	if !auto {
-		fmt.Print("  Updating metadata...     ")
+		fmt.Print("  Removing metadata...     ")
 	}
-	_, err = dbManager.Branch.Exec(ctx, `
-		UPDATE pgdelta.branches
-		SET status = 'deleted', deleted_at = now()
-		WHERE id = $1
-	`, branchID)
+	// Delete in FK order
+	_, _ = dbManager.Branch.Exec(ctx,
+		"DELETE FROM pgdelta.branch_data_snapshots WHERE branch_id = $1", branchID)
+	_, _ = dbManager.Branch.Exec(ctx,
+		"DELETE FROM pgdelta.branch_migrations WHERE branch_id = $1", branchID)
+	_, _ = dbManager.Branch.Exec(ctx,
+		"DELETE FROM pgdelta.conflict_log WHERE branch_id = $1", branchID)
+	_, err = dbManager.Branch.Exec(ctx,
+		"DELETE FROM pgdelta.branches WHERE id = $1", branchID)
 	if err != nil {
 		if !auto {
 			fmt.Println("✗")
 		}
-		return fmt.Errorf("failed to update metadata: %w", err)
+		return fmt.Errorf("failed to delete metadata: %w", err)
 	}
 	if !auto {
 		fmt.Println("✓")
